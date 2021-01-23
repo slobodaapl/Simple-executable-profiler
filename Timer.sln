@@ -1,0 +1,27 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30011.22
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Timer", "Timer.vcxproj", "{10E3E736-FBCA-4C6B-84E3-6F0488904702}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "boost", "boost", "{FCFBD2D9-7C30-4326-A0FF-543E38ACDC58}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{10E3E736-FBCA-4C6B-84E3-6F0488904702}.Debug|x64.ActiveCfg = Debug|x64
+		{10E3E736-FBCA-4C6B-84E3-6F0488904702}.Debug|x64.Build.0 = Debug|x64
+		{10E3E736-FBCA-4C6B-84E3-6F0488904702}.Release|x64.ActiveCfg = Release|x64
+		{10E3E736-FBCA-4C6B-84E3-6F0488904702}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C9126BCB-F35E-4EE8-B2F2-A9965823FE52}
+	EndGlobalSection
+EndGlobal
