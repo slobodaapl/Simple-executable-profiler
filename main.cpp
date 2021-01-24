@@ -1,8 +1,11 @@
 #include <boost/process.hpp>
 #include <boost/chrono.hpp>
+#include <exception>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 #include <stdexcept>
 #include <cstdio>
@@ -47,6 +50,7 @@ int main(int argc, char* argv[])
 
 	std::vector<std::string> proc_arguments;
 	unsigned long long count = 1;
+	std::string string_num;
 	std::string in_path; // Default initialized to ""
 	std::string out_path;
 	std::string err_path;
@@ -65,9 +69,17 @@ int main(int argc, char* argv[])
 					std::cout << "Unexpected end of argument list.\n";
 					return EXIT_FAILURE;
 				}
+
+				string_num = *(++it);
+			
+				if(!is_digits(string_num))
+				{
+					std::cout << "Argument for --count is either negative or contains non-numeric characters.\n";
+					return EXIT_FAILURE;
+				}
 			
 				try {
-					count = std::stoull(*(++it));
+					count = std::stoull(string_num);
 				} catch(std::out_of_range&)
 				{
 					std::cout << "Number too large for --count.\n";
@@ -75,6 +87,12 @@ int main(int argc, char* argv[])
 				} catch (std::invalid_argument&)
 				{
 					std::cout << "--count can only accept numeric values.\n";
+					return EXIT_FAILURE;
+				}
+
+				if(count == 0)
+				{
+					std::cout << "Count must be larger than 0.\n";
 					return EXIT_FAILURE;
 				}
 			
@@ -106,47 +124,94 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	auto* in = std::fopen(in_path.c_str(), "r");
-	if (!in && !in_path.empty()) {
-		std::cout << "Couldn't open or find --in file.\n";
-		return EXIT_FAILURE;
+	auto out_stream = out_path.empty() ? (bp::std_out > stdout) : (bp::std_out > out_path);
+	auto err_stream = out_path.empty() ? (bp::std_err > stderr) : (bp::std_err > err_path);
+
+	if (!out_path.empty()) {
+		std::ofstream ofs_out(out_path);
+		if (!ofs_out.is_open())
+		{
+			std::cout << "STD_OUT file cannot be opened for writing.\n";
+			return EXIT_FAILURE;
+		}
+		ofs_out.close();
 	}
 
-	auto* out = std::fopen(out_path.c_str(), "w");
-	if (!out && !out_path.empty()) {
-		std::cout << "Couldn't open --out file for writing.\n";
-		return EXIT_FAILURE;
+	if (!err_path.empty()) {
+		std::ofstream ofs_err(err_path);
+		if (!ofs_err.is_open())
+		{
+			std::cout << "STD_ERR file cannot be opened for writing.\n";
+			return EXIT_FAILURE;
+		}
+		ofs_err.close();
 	}
 
-	auto* err = std::fopen(err_path.c_str(), "w");
-	if(!err && !err_path.empty()) {
-		std::cout << "Couldn't open --err file for writing.\n";
-		return EXIT_FAILURE;
+	if (!in_path.empty()) {
+		std::ifstream ifs_in(in_path);
+		if (!ifs_in.is_open())
+		{
+			std::cout << "STD_IN file cannot be opened for writing.\n";
+			return EXIT_FAILURE;
+		}
+		ifs_in.close();
 	}
 
 	auto first = true;
 	long double duration = 0;
 	long double n = 1;
+	int exit_code = 0;
 	
 	for (unsigned long long iter = 0; iter < count; iter++)
 	{
-		std::string s(7, '\0');
-		auto str_out = std::snprintf(&s[0], s.size(), "%.2f", (static_cast<double>(iter + 1) / static_cast<double>(count)) * 100);
-		s.resize(str_out);
-		std::cout << "Progress: " << iter + 1 << "/" << count << " ... " << s << "% done." << '\r' << std::flush;
+		if (!in_path.empty() && !out_path.empty() && !err_path.empty() && count > 1) {
+			std::string s(7, '\0');
+			auto str_out = std::snprintf(&s[0], s.size(), "%.2f", (static_cast<double>(iter + 1) / static_cast<double>(count)) * 100);
+			s.resize(str_out);
+			std::cout << "Progress: " << iter + 1 << "/" << count << " ... " << s << "% done." << '\r' << std::flush;
+		}
 		
-		auto start = bench_clock::now();
-		bp::child proc(bp::exe(executable_path), bp::std_in < in, bp::std_out > out, bp::std_err > out, bp::args(proc_arguments));
-		proc.wait();
-		auto end = bench_clock::now();
-		std::rewind(in);
+		std::unique_ptr<bp::child> proc;
+		boost::chrono::time_point<boost::chrono::steady_clock> start;
+		boost::chrono::time_point<boost::chrono::steady_clock> end;
+
+		if(in_path.empty())
+		{
+			std::cout << "Child process may be awaiting input from stdin:\n";
+		}
+		
+		try 
+		{
+			if (in_path.empty()) {
+				start = bench_clock::now();
+				proc = std::make_unique<bp::child>(bp::exe(executable_path), bp::std_in < stdin, out_stream, err_stream, bp::args(proc_arguments));
+			}
+			else {
+				start = bench_clock::now();
+				proc = std::make_unique<bp::child>(bp::exe(executable_path), bp::std_in < in_path, out_stream, err_stream, bp::args(proc_arguments));
+			}
+			(*proc).wait();
+			end = bench_clock::now();
+			exit_code = proc->exit_code();
+			
+		}
+		catch (std::exception const& e)
+		{
+			std::cout << e.what();
+			return EXIT_FAILURE;
+		}
+
+		if(count == 1)
+		{
+			std::cout << "Program completed with exit code " << exit_code << "\n";
+		}
 
 		if (iter == 1 && count >= 5)
 			continue;
 
 		n++;
 
-		long double interval = static_cast<long double>(boost::chrono::duration_cast<boost::chrono::milliseconds>(end - start).count());
+		auto interval = static_cast<long double>(boost::chrono::duration_cast<boost::chrono::microseconds>(end - start).count());
 		if (first) {
 			duration += interval;
 			first = false;
@@ -155,14 +220,19 @@ int main(int argc, char* argv[])
 			duration = (duration * (n - 1) + interval) / n;
 	}
 
-	if(duration <= 0.001)
-		std::cout << "\nMeasured duration: " << duration*1000000 << " nanoseconds\n";
-	else if(duration <= 0)
-		std::cout << "\nMeasured duration: " << duration * 1000 << " microseconds\n";
+	if(exit_code != 0)
+	{
+		std::cout << "Warning, program may have crashed or thrown an exception mid run, profiling may be inaccurate.\n";
+	}
+
+	if(duration <= 0)
+		std::cout << "\nMeasured duration: " << duration*1000 << " nanoseconds\n";
 	else if(duration <= 1000)
-		std::cout << "\nMeasured duration: " << duration << " milliseconds\n";
+		std::cout << "\nMeasured duration: " << duration << " microseconds\n";
+	else if(duration <= 1000000)
+		std::cout << "\nMeasured duration: " << duration / 1000 << " milliseconds\n";
 	else
-		std::cout << "\nMeasured duration: " << duration / 1000 << " seconds\n";
+		std::cout << "\nMeasured duration: " << duration / 1000000 << " seconds\n";
 	
 	return EXIT_SUCCESS;
 }
